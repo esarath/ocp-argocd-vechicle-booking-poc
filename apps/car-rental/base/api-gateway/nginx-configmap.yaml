@@ -6,16 +6,45 @@ metadata:
     app: api-gateway
 data:
   default.conf: |
+    # Cluster DNS, not a hardcoded upstream — resolves proxy_pass targets at
+    # REQUEST time via a variable, not once at config-load time. A plain
+    # `proxy_pass http://svc:8080/` resolves the hostname once at nginx
+    # startup and treats failure as fatal (nginx won't even start) — fatal
+    # forever if that lookup loses a race with the target Service, or DNS is
+    # briefly slow/unavailable (e.g. under cluster resource pressure).
+    resolver 172.30.0.10 valid=10s;
+
     server {
       listen 8080;
 
-      location /catalog/  { proxy_pass http://catalog-svc:8080/; }
-      location /location/ { proxy_pass http://location-svc:8080/; }
-      location /traveler/ { proxy_pass http://traveler-svc:8080/; }
-      location /pricing/  { proxy_pass http://pricing-svc:8080/; }
-      location /booking/  { proxy_pass http://booking-svc:8080/; }
-      location /payment/  { proxy_pass http://payment-svc:8080/; }
-      location /chatbot/  { proxy_pass http://chatbot-svc:8080/; }
+      location /catalog/ {
+        set $upstream http://catalog-svc:8080;
+        proxy_pass $upstream/;
+      }
+      location /location/ {
+        set $upstream http://location-svc:8080;
+        proxy_pass $upstream/;
+      }
+      location /traveler/ {
+        set $upstream http://traveler-svc:8080;
+        proxy_pass $upstream/;
+      }
+      location /pricing/ {
+        set $upstream http://pricing-svc:8080;
+        proxy_pass $upstream/;
+      }
+      location /booking/ {
+        set $upstream http://booking-svc:8080;
+        proxy_pass $upstream/;
+      }
+      location /payment/ {
+        set $upstream http://payment-svc:8080;
+        proxy_pass $upstream/;
+      }
+      location /chatbot/ {
+        set $upstream http://chatbot-svc:8080;
+        proxy_pass $upstream/;
+      }
 
       location /healthz {
         return 200 'ok';

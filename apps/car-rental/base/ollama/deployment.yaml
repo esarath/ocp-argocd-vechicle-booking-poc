@@ -25,6 +25,14 @@ spec:
           env:
             - name: OLLAMA_MODELS
               value: /models
+            # Ollama also writes an identity key to $HOME/.ollama at
+            # startup (separate from OLLAMA_MODELS) — with no HOME set,
+            # an arbitrary-UID container defaults HOME to "/", which is
+            # read-only, and the pod CrashLoopBackOffs on
+            # "mkdir /.ollama: permission denied". Reuse the models PVC,
+            # which is already writable.
+            - name: HOME
+              value: /models
           volumeMounts:
             - name: models
               mountPath: /models
