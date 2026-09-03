@@ -10,8 +10,11 @@ commonLabels:
   tenant-environment: dev
 
 images:
-  # CI (car-rental-ci.yaml) auto-commits a real SHA tag here on every push to
-  # services/generic-svc/** — see architecture doc LLD 05 and execution guide
-  # Phase 03 Task 8. "latest" is the pre-first-build placeholder.
+  # CI (car-rental-ci.yaml) opens a PR bumping this tag on every push to
+  # services/generic-svc/** — merge is required (branch protection), it does
+  # not commit here directly. See architecture doc LLD 05 / execution guide
+  # Phase 03 Task 7. This tag is real — car-rental-ci.yaml's first run (before
+  # the PR-gate fix landed) auto-committed it directly; the image really is
+  # pushed to ghcr.io under this SHA.
   - name: ghcr.io/esarath/car-rental-svc
     newTag: db13f268a208c6dc53ffc10885f35b217297d0b2
