@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - stage-namespace.yaml
+  - prod-namespace.yaml
+  - vehicle-booking-stage.yaml
+  - vehicle-booking-prod.yaml
