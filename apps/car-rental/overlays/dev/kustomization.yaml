@@ -14,4 +14,4 @@ images:
   # services/generic-svc/** — see architecture doc LLD 05 and execution guide
   # Phase 03 Task 8. "latest" is the pre-first-build placeholder.
   - name: ghcr.io/esarath/car-rental-svc
-    newTag: latest
+    newTag: db13f268a208c6dc53ffc10885f35b217297d0b2
