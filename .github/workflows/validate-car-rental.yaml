@@ -51,10 +51,6 @@ jobs:
             ns=$(grep '^namespace:' "$d/kustomization.yaml" | awk '{print $2}')
             kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
             kubectl kustomize "$d" \
-              | python3 -c "
-import sys, yaml
-docs = [d for d in yaml.safe_load_all(sys.stdin) if d and d.get('kind') != 'Route']
-yaml.safe_dump_all(docs, sys.stdout)
-" \
+              | python3 -c "import sys, yaml; docs = [d for d in yaml.safe_load_all(sys.stdin) if d and d.get('kind') != 'Route']; yaml.safe_dump_all(docs, sys.stdout)" \
               | kubectl apply --dry-run=server -f -
           done
