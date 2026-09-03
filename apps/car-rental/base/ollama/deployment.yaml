@@ -6,6 +6,14 @@ metadata:
     app: ollama
 spec:
   replicas: 1
+  strategy:
+    # Default RollingUpdate briefly runs old+new pods together, needing
+    # 2x ollama's quota headroom during any spec change — real incident
+    # 2026-09-03: this stalled for 10+ minutes under car-rental-dev's tight
+    # ResourceQuota (exceeded quota: limits.cpu/limits.memory) and left the
+    # OLD, broken pod in place indefinitely. Single replica, POC-acceptable
+    # brief downtime on update — Recreate avoids ever needing 2x capacity.
+    type: Recreate
   selector:
     matchLabels:
       app: ollama
