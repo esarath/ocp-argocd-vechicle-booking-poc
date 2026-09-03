@@ -1,6 +1,6 @@
 # ocp-argocd-vechicle-booking-poc
 
-ArgoCD/GitOps deployment repo for the **vehicle booking** POC, targeting the
+ArgoCD/GitOps deployment repo for the **car rental booking** POC (resources named `vehicle-booking` to match the repo), targeting the
 `lab.ocp.local` OpenShift cluster. Follows the same App-of-Apps + Kustomize
 pattern as [`ocp-gitops-poc`](https://github.com/esarath/ocp-gitops-poc).
 
@@ -31,4 +31,4 @@ This registers an ArgoCD `AppProject` (`vehicle-booking`) and a root
 ## Status
 
 Scaffold only — application manifests under `apps/vehicle-booking/base` are
-placeholders to be replaced with the real vehicle-booking service.
+placeholders to be replaced with the real car rental booking service.
