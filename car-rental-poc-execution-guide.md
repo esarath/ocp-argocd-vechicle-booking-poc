@@ -32,26 +32,35 @@ Step-by-step build instructions against the published HLD/LLD: bootstrap this re
 ---
 
 ## Phase -1 — One-time GitHub setup: branch protection (manual, repo-admin)
-**Owner:** Repo owner (`esarath`) · **Mode:** manual — needs repo-admin API access this session couldn't safely automate
+**Owner:** Repo owner (`esarath`) · **Mode:** manual, repo-admin — **✅ done 2026-09-03**
 
 The whole "no auto-approve, min 1 approver" design in LLD 05 only has teeth once this exists — without it, both bots (and anyone else) can still push straight to `main`.
 
-### Task -1a — Set branch protection on `main` `manual`
-Run this yourself (via `gh api`, authenticated as a repo admin), or use **Settings → Branches → Add rule** in the GitHub UI with the equivalent options:
+### Task -1a — Set branch protection on `main` `manual` — ✅ done
+Applied via `gh api` with a JSON payload (the nested `-f`/`-F` flag syntax rejects typed fields like booleans/integers inside nested objects — use `--input` with a real JSON file instead):
 ```bash
+cat > /tmp/branch-protection.json <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["yaml-lint", "kustomize-and-dry-run"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1,
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+EOF
 gh api -X PUT repos/esarath/ocp-argocd-vechicle-booking-poc/branches/main/protection \
   -H "Accept: application/vnd.github+json" \
-  -f required_status_checks[strict]=true \
-  -f "required_status_checks[contexts][]=yaml-lint" \
-  -f "required_status_checks[contexts][]=kustomize-and-dry-run" \
-  -F enforce_admins=true \
-  -f required_pull_request_reviews[required_approving_review_count]=1 \
-  -F required_pull_request_reviews[dismiss_stale_reviews]=true \
-  -f required_pull_request_reviews[require_code_owner_reviews]=true \
-  -F restrictions=null \
-  -F allow_force_pushes=false \
-  -F allow_deletions=false
+  --input /tmp/branch-protection.json
 ```
+✓ **Verified live:** a direct `git push origin main` (an empty test commit) was rejected with `GH006: Protected branch update failed ... Changes must be made through a pull request ... 2 of 2 required status checks are expected.` The rule is real, not just declared.
 ✓ **Verify:** `gh api repos/esarath/ocp-argocd-vechicle-booking-poc/branches/main/protection | jq .required_pull_request_reviews`, and try a direct `git push origin main` — it should be rejected.
 
 ↺ **Rollback:** Settings misconfigured — re-run with corrected values, or delete the rule from **Settings → Branches** and start over; no effect on already-merged history.
@@ -303,7 +312,7 @@ oc describe nodes worker-1.lab.ocp.local worker-2.lab.ocp.local | grep -A3 "Allo
 
 | Failure point | Symptom | Rollback action |
 |---|---|---|
-| Phase -1 — branch protection misconfigured | Bots or people can still push straight to `main` | Re-run the `gh api` command with corrected values, or fix via Settings → Branches |
+| Phase -1 — branch protection misconfigured or later disabled | Bots or people can push straight to `main` | Re-run the `gh api` command with corrected values (or `gh api repos/esarath/ocp-argocd-vechicle-booking-poc/branches/main/protection` to check current state), or fix via Settings → Branches |
 | Phase 00 — bootstrap applied with wrong repo URL/branch | AppProject/Application exist but never sync | Fix `apps/app-of-apps/project.yaml`/`app-of-apps.yaml`, re-apply — declarative |
 | Phase 01 — bad NetworkPolicy/RBAC | ArgoCD sync error, pods can't reach DNS/monitoring | Fix source YAML in the repo, push — self-heal reverts any live hand-edit anyway |
 | Phase 02 — wrong quota values | Pods stuck `Pending`, admission denied | Re-apply the corrected `resourcequota.yaml`/`limitrange.yaml` — declarative, no disruption |

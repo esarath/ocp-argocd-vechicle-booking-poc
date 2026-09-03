@@ -28,7 +28,7 @@ services/
 
 Everything under `apps/` — namespaces, NetworkPolicies, RBAC, all 12 workloads, PodDisruptionBudgets — is ArgoCD-managed. `platform/multi-tenancy/manual/` is the one deliberate exception (security control, not an oversight — see architecture doc's risk table).
 
-**No workflow pushes to `main` directly** — both CI bots only open PRs; branch protection (1 required approval, required status checks, no direct pushes) gates every merge, human or bot. See the execution guide's Phase -1 for the one-time setup command.
+**No workflow pushes to `main` directly** — both CI bots only open PRs; branch protection (1 required approval, required status checks, no direct pushes, enforced on admins too) gates every merge, human or bot. **✅ Live** — verified 2026-09-03 by a rejected direct push. See execution guide Phase -1.
 
 ## Bootstrap (one-time)
 
@@ -41,4 +41,4 @@ Full sequence, gates, and verification commands are in the execution guide.
 
 ## Status
 
-Design + all manifests generated and validated (`oc kustomize` builds clean for every overlay) 2026-09-03. HA pod placement (topology spread + PDBs) and PR-gated CI added the same day. The unused `redis-platform` namespace/Application/AppProject and a stray `redis-bench-loop` pod were deleted from the cluster to free capacity — nothing from this repo has been applied yet. Branch protection still needs the one-time manual setup in the execution guide's Phase -1. Awaiting review before Phase 00 bootstrap.
+Design + all manifests generated and validated (`oc kustomize` builds clean for every overlay) 2026-09-03. HA pod placement (topology spread + PDBs) and PR-gated CI added the same day. The unused `redis-platform` namespace/Application/AppProject and a stray `redis-bench-loop` pod were deleted from the cluster to free capacity. Branch protection is live and verified. Nothing from `apps/` has been applied to the cluster yet — awaiting review before Phase 00 bootstrap.

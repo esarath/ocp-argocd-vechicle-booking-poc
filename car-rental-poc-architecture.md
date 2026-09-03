@@ -198,7 +198,7 @@ git push (main, services/generic-svc/**) → GH Actions CI (smoke-import·build�
 
 `validate-car-rental.yaml` gates every PR/push with yaml-lint + `kubectl kustomize` build + a `kind`-backed server-side dry-run of both overlays — this is the required status check branch protection points at.
 
-> ⚠️ **Branch protection itself is not yet configured** — it has to be set via the GitHub API/UI with repo-admin rights, which is outside what this session could safely automate (the same PAT-handling restriction that blocked automated repo creation earlier — see the execution guide's setup step for the exact command to run). The workflow YAML above only has teeth once that setting exists.
+> ✅ **Branch protection configured and verified 2026-09-03** — 1 required approving review (CODEOWNERS-scoped), both `validate-car-rental` jobs required as status checks, `enforce_admins: true` (no bypass, including for repo admins), no force-pushes or branch deletion. Verified live: a direct push to `main` was rejected with `GH006: Protected branch update failed`. See execution guide Phase -1 for the exact command.
 
 ## LLD 06 · AI / MCP chatbot
 
@@ -264,7 +264,6 @@ gh workflow run car-rental-promote.yaml -f image_tag=<validated-sha>
 | No HPAs configured | Not currently applicable — cluster-wide HPA list is empty as of 2026-09-03 (the earlier-flagged failing HPA belonged to a workload since torn down) | Revisit only if/when HPAs are actually introduced for this workload |
 | No ServiceMonitors on car-rental services | No scrape-based alerting yet (PDBs are now in place — see LLD 01a) | Add once dev is stable, mirroring `ocp-gitops-poc`'s own `argocd/components/` pattern |
 | ResourceQuota/LimitRange stay manual, not ArgoCD-managed | The one deliberate exception to "everything managed by ArgoCD" | **Kept intentionally.** Granting the ArgoCD controller SA `create` on `ResourceQuota`/`LimitRange` would let a compromised or misconfigured Application self-grant more quota than intended — the same reasoning already established for `ocp-gitops-poc`'s multi-tenancy work. Every other object (namespaces, NetworkPolicies, RBAC, all 12 workloads, PDBs) is 100% ArgoCD-managed. Revisit only with an explicit, separate risk-acceptance decision. |
-| Branch protection not yet configured on GitHub | The PR-approval workflow (LLD 05) has no teeth until this is set | See execution guide's setup step — needs repo-admin API access this session can't safely automate (same PAT restriction as repo creation) |
 
 ---
 
