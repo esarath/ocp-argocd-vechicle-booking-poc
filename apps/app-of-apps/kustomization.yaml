@@ -5,4 +5,3 @@ resources:
   - dev-namespace.yaml
   - prod-namespace.yaml
   - car-rental-dev.yaml
-  - car-rental-prod.yaml
