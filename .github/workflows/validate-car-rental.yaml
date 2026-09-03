@@ -37,8 +37,20 @@ jobs:
       - name: Server-side dry-run against kind
         run: |
           set -e
+          # Objects already carry their real namespace (car-rental-dev /
+          # car-rental-prod, set via each overlay's `namespace:` field), so
+          # -n <other-namespace> conflicts and kubectl refuses. Create the
+          # real namespace instead of redirecting to a fake one.
+          #
+          # Route is OpenShift-specific (route.openshift.io) and has no CRD
+          # on a vanilla `kind` cluster — filtered out here, not skipped
+          # silently: its YAML shape is still checked by yaml-lint and the
+          # kustomize build step above, just not server-side admission.
           for d in apps/car-rental/overlays/dev apps/car-rental/overlays/prod; do
-            echo "== $d (namespace-agnostic dry-run) =="
-            kubectl create namespace dryrun-target --dry-run=client -o yaml | kubectl apply -f - || true
-            kubectl kustomize "$d" | kubectl apply --dry-run=server -n dryrun-target -f -
+            echo "== $d =="
+            ns=$(grep '^namespace:' "$d/kustomization.yaml" | awk '{print $2}')
+            kubectl create namespace "$ns" --dry-run=client -o yaml | kubectl apply -f -
+            kubectl kustomize "$d" \
+              | python3 -c "import sys, yaml; docs = [d for d in yaml.safe_load_all(sys.stdin) if d and d.get('kind') != 'Route']; yaml.safe_dump_all(docs, sys.stdout)" \
+              | kubectl apply --dry-run=server -f -
           done
