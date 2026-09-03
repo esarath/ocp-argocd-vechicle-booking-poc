@@ -5,6 +5,7 @@ namespace: car-rental-prod
 
 resources:
   - ../../base
+  - pdb
 
 commonLabels:
   tenant-environment: prod

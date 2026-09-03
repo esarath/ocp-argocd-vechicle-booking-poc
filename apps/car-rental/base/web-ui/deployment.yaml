@@ -14,6 +14,13 @@ spec:
       labels:
         app: web-ui
     spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: web-ui
       containers:
         - name: web-ui
           image: docker.io/nginxinc/nginx-unprivileged:1.27-alpine

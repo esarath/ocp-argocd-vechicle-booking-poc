@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   promote:
@@ -24,11 +25,25 @@ jobs:
             exit 1
           }
 
-      - name: Commit the tag into the prod overlay
+      # Two human gates, not one: someone has to explicitly dispatch this
+      # workflow with a tag, AND the PR it opens still needs a separate
+      # approving review before merge (same branch protection as car-rental-ci)
+      # — no auto-approve, no direct push to main, for prod either.
+      - name: Open a PR bumping the prod overlay's image tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           git config user.name "car-rental-promote"
           git config user.email "car-rental-ci@users.noreply.github.com"
+          BRANCH="promote/car-rental-svc-${{ inputs.image_tag }}"
+          git checkout -b "$BRANCH"
           sed -i "s|newTag: .*|newTag: ${{ inputs.image_tag }}|" apps/car-rental/overlays/prod/kustomization.yaml
           git add apps/car-rental/overlays/prod/kustomization.yaml
           git commit -m "promote: car-rental-svc ${{ inputs.image_tag }} -> prod"
-          git push
+          git push origin "$BRANCH"
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "promote: car-rental-svc ${{ inputs.image_tag }} -> prod" \
+            --body "Manually dispatched by @${{ github.actor }}. Requires 1 approval before merge (branch protection) — ArgoCD syncs \`car-rental-prod\` only after this merges."

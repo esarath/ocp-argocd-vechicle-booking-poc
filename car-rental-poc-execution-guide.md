@@ -20,11 +20,7 @@ Step-by-step build instructions against the published HLD/LLD: bootstrap this re
 - All 5 nodes `Ready`, all 34 ClusterOperators `Available=True`/`Degraded=False`
 - Real free worker capacity: ~6.5Gi memory / ~3.7 vCPU combined (see architecture doc LLD 01)
 - Cluster-wide HPA list is empty — no failing-metrics HPA currently exists
-
-> ⚠️ **Open precondition, not yet resolved:** `redis-bench-loop` (a leftover pod, unrelated to this POC) is still running in the `default` namespace — 5+ days old at last check. Clean it up before Phase 1 so it isn't confused for anything car-rental-related:
-> ```bash
-> oc delete pod redis-bench-loop -n default
-> ```
+- ✅ **Cleaned up 2026-09-03:** `redis-bench-loop` (leftover pod, `default` ns) and the unused `redis-platform` namespace / `redis-platform-appl` Application / `redis-project` AppProject (governance-only scaffold left over from an already-torn-down Redis workload) are all deleted — no open preconditions remain from earlier reviews.
 
 **Artifacts on hand**
 - This repo's `main` branch, containing `apps/`, `platform/multi-tenancy/manual/`, `services/generic-svc/`, and `.github/workflows/`
@@ -32,6 +28,33 @@ Step-by-step build instructions against the published HLD/LLD: bootstrap this re
 - The Architecture doc (HLD/LLD) for cross-reference
 
 > ⚠️ **Gate:** Do not start Phase 1 until CI (`validate-car-rental.yaml`: yaml-lint, kustomize build, kind-backed server-side dry-run) is green on the commit. That workflow is the safety net for everything below — skipping it means finding these mistakes live on the cluster instead.
+
+---
+
+## Phase -1 — One-time GitHub setup: branch protection (manual, repo-admin)
+**Owner:** Repo owner (`esarath`) · **Mode:** manual — needs repo-admin API access this session couldn't safely automate
+
+The whole "no auto-approve, min 1 approver" design in LLD 05 only has teeth once this exists — without it, both bots (and anyone else) can still push straight to `main`.
+
+### Task -1a — Set branch protection on `main` `manual`
+Run this yourself (via `gh api`, authenticated as a repo admin), or use **Settings → Branches → Add rule** in the GitHub UI with the equivalent options:
+```bash
+gh api -X PUT repos/esarath/ocp-argocd-vechicle-booking-poc/branches/main/protection \
+  -H "Accept: application/vnd.github+json" \
+  -f required_status_checks[strict]=true \
+  -f "required_status_checks[contexts][]=yaml-lint" \
+  -f "required_status_checks[contexts][]=kustomize-and-dry-run" \
+  -F enforce_admins=true \
+  -f required_pull_request_reviews[required_approving_review_count]=1 \
+  -F required_pull_request_reviews[dismiss_stale_reviews]=true \
+  -f required_pull_request_reviews[require_code_owner_reviews]=true \
+  -F restrictions=null \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false
+```
+✓ **Verify:** `gh api repos/esarath/ocp-argocd-vechicle-booking-poc/branches/main/protection | jq .required_pull_request_reviews`, and try a direct `git push origin main` — it should be rejected.
+
+↺ **Rollback:** Settings misconfigured — re-run with corrected values, or delete the rule from **Settings → Branches** and start over; no effect on already-merged history.
 
 ---
 
@@ -126,13 +149,14 @@ oc get events -n car-rental-dev --sort-by=.lastTimestamp | tail -30
 1. The shared image isn't pushed yet (see Task 7) — `ImagePullBackOff`, not `CrashLoopBackOff`.
 2. `postgresql`/`redis`/`ollama` specifically crash-looping with a permission/UID error — see architecture doc LLD 02's arbitrary-UID note; confirm the pod's actually-assigned UID with `oc get pod <name> -n car-rental-dev -o jsonpath='{.spec.securityContext}'` and check the mounted volume's ownership matches.
 
-### Task 7 — Confirm the shared service image built and pushed `automatic`
-The 8 business services all run `ghcr.io/esarath/car-rental-svc`, built by `car-rental-ci.yaml` on first push to `services/generic-svc/**`.
+### Task 7 — Confirm the shared service image built, and merge the tag-bump PR `manual (the merge), automatic (everything before it)`
+The 8 business services all run `ghcr.io/esarath/car-rental-svc`, built by `car-rental-ci.yaml` on first push to `services/generic-svc/**`. That workflow only *opens a PR* against the dev overlay — it does not push to `main` itself (see architecture doc LLD 05) — so a human still has to approve and merge it before ArgoCD sees a new tag.
 ```bash
 gh run list --workflow=car-rental-ci.yaml --limit 3
 gh api /user/packages/container/car-rental-svc/versions --jq '.[0].metadata.container.tags'
+gh pr list --search "ci: car-rental-svc"
 ```
-✓ **Verify:** Latest workflow run `completed`/`success`; the dev overlay's `newTag` matches a real pushed tag (not the `latest` placeholder it ships with).
+✓ **Verify:** Latest workflow run `completed`/`success`; a PR titled `ci: car-rental-svc <sha> -> dev` is open — review and merge it (requires the 1 approval from Phase -1's branch protection). Only after that merge does the dev overlay's `newTag` match a real pushed tag (not the `latest` placeholder it ships with).
 
 ---
 
@@ -216,12 +240,14 @@ grep newTag apps/car-rental/overlays/dev/kustomization.yaml
 ```
 ✓ **Verify:** This is the exact SHA tag that passed Phase 5 — write it down, it's the promote input.
 
-### Task 15 — Run the promote workflow `manual`
+### Task 15 — Run the promote workflow, then merge the PR it opens `manual, two gates`
+Two separate human actions, deliberately — dispatching the workflow is not the same as merging its PR:
 ```bash
 gh workflow run car-rental-promote.yaml -f image_tag=<validated-sha>
 gh run watch
+gh pr list --search "promote: car-rental-svc"
 ```
-✓ **Verify:** Workflow completes; `apps/car-rental/overlays/prod/kustomization.yaml` now carries `<validated-sha>` as a new commit on `main`.
+✓ **Verify:** Workflow completes and opens a PR titled `promote: car-rental-svc <sha> -> prod`. Review and merge it (requires the 1 approval from Phase -1's branch protection) — only after that merge does `apps/car-rental/overlays/prod/kustomization.yaml` actually carry `<validated-sha>` on `main`.
 
 ### Task 16 — Watch ArgoCD sync production `automatic`
 ```bash
@@ -252,6 +278,17 @@ oc get endpoints booking-svc api-gateway web-ui -n car-rental-prod
 ```
 ✓ **Verify:** Each Service lists 2 ready endpoint IPs, not 1 — confirms the replica count took effect and both pods are actually Ready, not just scheduled.
 
+### Task 18a — Confirm the two replicas actually landed on different workers, and the PDB is real `manual`
+```bash
+oc get pods -n car-rental-prod -l app=booking-svc -o wide
+oc get pods -n car-rental-prod -l app=api-gateway -o wide
+oc get pods -n car-rental-prod -l app=web-ui -o wide
+oc get pdb -n car-rental-prod
+```
+✓ **Verify:** For each of the three services, the two pods' `NODE` column shows `worker-1.lab.ocp.local` and `worker-2.lab.ocp.local` — not both on the same node (confirms `topologySpreadConstraints` actually worked, not just that it was declared). All 3 PDBs show `ALLOWED DISRUPTIONS: 1`.
+
+↺ **If both replicas landed on the same node:** not a failure by itself (`whenUnsatisfiable: ScheduleAnyway` allows it if the other worker was briefly full) — re-check after a few minutes; if it persists, check `oc describe node` on both workers for why one is being avoided.
+
 ### Task 19 — Combined footprint check across both namespaces `manual`
 The one risk called out in the LLD: dev + prod together are the tightest against this lab cluster's free CPU, not memory.
 ```bash
@@ -266,6 +303,7 @@ oc describe nodes worker-1.lab.ocp.local worker-2.lab.ocp.local | grep -A3 "Allo
 
 | Failure point | Symptom | Rollback action |
 |---|---|---|
+| Phase -1 — branch protection misconfigured | Bots or people can still push straight to `main` | Re-run the `gh api` command with corrected values, or fix via Settings → Branches |
 | Phase 00 — bootstrap applied with wrong repo URL/branch | AppProject/Application exist but never sync | Fix `apps/app-of-apps/project.yaml`/`app-of-apps.yaml`, re-apply — declarative |
 | Phase 01 — bad NetworkPolicy/RBAC | ArgoCD sync error, pods can't reach DNS/monitoring | Fix source YAML in the repo, push — self-heal reverts any live hand-edit anyway |
 | Phase 02 — wrong quota values | Pods stuck `Pending`, admission denied | Re-apply the corrected `resourcequota.yaml`/`limitrange.yaml` — declarative, no disruption |
@@ -279,6 +317,7 @@ oc describe nodes worker-1.lab.ocp.local worker-2.lab.ocp.local | grep -A3 "Allo
 
 | Phase | Responsible | Accountable | Consulted | Informed |
 |---|---|---|---|---|
+| -1 GitHub setup | Repo owner (`esarath`) | Repo owner | — | Platform lead |
 | 00–02 Bootstrap + onboarding | Platform/GitOps engineer | Platform lead | Security (NetworkPolicy scope) | App owner |
 | 03–05 Dev rollout | Platform/GitOps engineer | Platform lead | App owner (smoke test) | — |
 | 06–07 Prod rollout | Platform/GitOps engineer | App owner (go/no-go) | Platform lead | Stakeholders |

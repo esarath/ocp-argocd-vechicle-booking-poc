@@ -24,6 +24,8 @@ Governance mirrors the pattern already proven on this cluster in `ocp-gitops-poc
 
 > **Design decision, recorded 2026-09-03:** an earlier draft of this doc targeted `esarath/ocp-gitops-poc` (extending its live `app-of-apps`/`multi-tenancy` AppProject). Confirmed against the live cluster that no such branch/extension existed yet, and the owner chose to keep this POC fully self-contained in its own repo instead — full isolation, more upfront GitOps wiring (its own bootstrap, AppProject, CI), no shared blast radius with the redis/multi-tenancy/sample-app work already live in `ocp-gitops-poc`.
 
+> **Cluster cleanup, done 2026-09-03:** the `redis-platform` namespace, its ArgoCD `Application` (`redis-platform-appl`, sourced from a separate `esarath/redis-gitops` repo) and its `AppProject` (`redis-project`) were deleted — confirmed unused (the actual Redis workload behind it, `redis-app`/`redis-db`, had already been torn down in an earlier session; only a `kube-state-metrics-redis` monitoring scaffold with no Redis instance to monitor remained). This released a small amount of cluster capacity back to the pool this POC draws from. `redis-bench-loop`, a second unrelated leftover pod in `default`, is also now gone.
+
 ---
 
 # High-Level Design
@@ -124,6 +126,16 @@ Push to `main` (path `services/generic-svc/**`) → GitHub Actions builds/tests/
 >
 > ⚠️ **CPU is the tighter constraint, not memory** — real free worker CPU measured the same day is **~3.7 vCPU combined** (2×2500m allocatable, worker-1 at 12% used / worker-2 at 38% used). Dev+prod combined CPU *requests* alone are 3.5 vCPU — within budget, but with almost no slack once ArgoCD, existing tenants, and cluster infra are accounted for. Validate dev with `oc adm top pods` before turning on prod load, same as the memory check, and don't assume memory being fine also means CPU is fine.
 
+## LLD 01a · Pod placement & high availability
+
+The cluster has exactly 2 schedulable workers (`worker-1`, `worker-2`) — "HA" here means spreading replicas across those 2 real workers and surviving a single voluntary disruption, not a textbook 3+-zone design the cluster doesn't have the nodes for.
+
+**Where 2 replicas actually matter (prod only):** `booking-svc`, `api-gateway`, `web-ui` — the request path a customer or a node drain would actually hit. Everything else (the other 7 business services, `postgresql`, `redis`, `ollama`) stays single-replica by design: they're either stateful singletons (Postgres, Ollama's model PVC) or not yet carrying real traffic (the other business services).
+
+- **`topologySpreadConstraints`** on all three (`maxSkew: 1`, `topologyKey: kubernetes.io/hostname`, `whenUnsatisfiable: ScheduleAnyway`) — defined once in `apps/car-rental/base/`, so it applies at whatever replica count an overlay sets. `ScheduleAnyway`, not `DoNotSchedule`: with only 2 workers, a hard constraint would leave pods `Pending` the moment one worker is full or briefly unavailable, which defeats the purpose on a cluster this size.
+- **`PodDisruptionBudget`** (`minAvailable: 1`) for the same three, **prod-overlay-only** (`apps/car-rental/overlays/prod/pdb/`) — a PDB with `minAvailable: 1` against a 1-replica dev Deployment would block voluntary disruptions (node drains, `oc adm cordon`) entirely, so it's deliberately not in the shared base.
+- **Not done, and why:** pod anti-affinity was considered and rejected in favor of `topologySpreadConstraints` — anti-affinity's binary "never/always" co-locate rule is a worse fit than spread's proportional balancing on a 2-node pool, and OpenShift/Kubernetes upstream guidance has moved the same direction.
+
 ## LLD 02 · Service specifications
 
 | Service | Image | Port | Store | Notes |
@@ -172,11 +184,21 @@ One PostgreSQL instance, five schemas — the memory-saving tradeoff explained i
 
 ```
 git push (main, services/generic-svc/**) → GH Actions CI (smoke-import·build·push) → ghcr.io (SHA-tagged image)
-    → dev overlay (CI auto-commits tag) → ArgoCD sync (car-rental-dev)
-    → promote (manual workflow_dispatch, tag must match what's live in dev) → prod overlay → ArgoCD sync (car-rental-prod)
+    → CI opens a PR bumping the dev overlay's tag → 1 required approval → merge → ArgoCD sync (car-rental-dev)
+    → promote (manual workflow_dispatch, tag must match what's live in dev) → opens a PR bumping the prod overlay
+    → 1 required approval → merge → ArgoCD sync (car-rental-prod)
 ```
 
-`car-rental-ci.yaml` handles the auto path into dev; `car-rental-promote.yaml` is the deliberate, human-triggered step into production, and refuses to promote a tag that isn't the one currently deployed in dev. `validate-car-rental.yaml` gates every PR/push with yaml-lint + `kubectl kustomize` build + a `kind`-backed server-side dry-run of both overlays.
+**No step writes to `main` directly, including the automation itself.** `car-rental-ci.yaml` builds/pushes the image and opens a PR for the dev tag bump — it does not commit straight to `main`. `car-rental-promote.yaml` is the deliberate, human-triggered step into production (`workflow_dispatch`, refuses to promote a tag that isn't the one currently deployed in dev) and *also* only opens a PR, never pushes directly. Every PR — from a person or from either bot — is gated by branch protection on `main`:
+
+- Require a pull request before merging (no direct pushes, no exceptions)
+- Require **1** approving review (CODEOWNERS: `@esarath`) — dismissed on new commits
+- Require the `validate-car-rental` status checks to pass before merge is allowed
+- No self-approval, no auto-merge configured anywhere in this repo
+
+`validate-car-rental.yaml` gates every PR/push with yaml-lint + `kubectl kustomize` build + a `kind`-backed server-side dry-run of both overlays — this is the required status check branch protection points at.
+
+> ⚠️ **Branch protection itself is not yet configured** — it has to be set via the GitHub API/UI with repo-admin rights, which is outside what this session could safely automate (the same PAT-handling restriction that blocked automated repo creation earlier — see the execution guide's setup step for the exact command to run). The workflow YAML above only has teeth once that setting exists.
 
 ## LLD 06 · AI / MCP chatbot
 
@@ -240,7 +262,9 @@ gh workflow run car-rental-promote.yaml -f image_tag=<validated-sha>
 | Shared scaffold image across 8 services | No real business logic yet | Split services out one at a time, each with its own image + CI job, as logic is written |
 | Ollama egress is `0.0.0.0/0` on 443, though pod-scoped | Still a broad destination CIDR for a model pull | Narrow to the real egress proxy / allowlist CIDR once known |
 | No HPAs configured | Not currently applicable — cluster-wide HPA list is empty as of 2026-09-03 (the earlier-flagged failing HPA belonged to a workload since torn down) | Revisit only if/when HPAs are actually introduced for this workload |
-| No PodDisruptionBudgets / ServiceMonitors on car-rental services | Node drains can take out all replicas at once; no scrape-based alerting yet | Add both once dev is stable, mirroring `ocp-gitops-poc`'s own `argocd/components/` pattern |
+| No ServiceMonitors on car-rental services | No scrape-based alerting yet (PDBs are now in place — see LLD 01a) | Add once dev is stable, mirroring `ocp-gitops-poc`'s own `argocd/components/` pattern |
+| ResourceQuota/LimitRange stay manual, not ArgoCD-managed | The one deliberate exception to "everything managed by ArgoCD" | **Kept intentionally.** Granting the ArgoCD controller SA `create` on `ResourceQuota`/`LimitRange` would let a compromised or misconfigured Application self-grant more quota than intended — the same reasoning already established for `ocp-gitops-poc`'s multi-tenancy work. Every other object (namespaces, NetworkPolicies, RBAC, all 12 workloads, PDBs) is 100% ArgoCD-managed. Revisit only with an explicit, separate risk-acceptance decision. |
+| Branch protection not yet configured on GitHub | The PR-approval workflow (LLD 05) has no teeth until this is set | See execution guide's setup step — needs repo-admin API access this session can't safely automate (same PAT restriction as repo creation) |
 
 ---
 

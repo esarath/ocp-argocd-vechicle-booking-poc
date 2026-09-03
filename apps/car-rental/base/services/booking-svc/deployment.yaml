@@ -14,6 +14,16 @@ spec:
       labels:
         app: booking-svc
     spec:
+      # HA: spread replicas across the 2 worker nodes rather than letting
+      # both land on the same one. ScheduleAnyway (not DoNotSchedule) so a
+      # 2-worker POC cluster never blocks scheduling if one worker is full.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: booking-svc
       containers:
         - name: booking-svc
           image: ghcr.io/esarath/car-rental-svc:latest

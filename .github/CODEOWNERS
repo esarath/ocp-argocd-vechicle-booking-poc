@@ -1,0 +1,4 @@
+# Every PR against main needs a review from one of these before merge —
+# paired with branch protection's "require 1 approving review", this is
+# what makes "no auto-approve" real rather than aspirational.
+* @esarath

@@ -9,6 +9,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   build-test-push:
@@ -45,11 +46,27 @@ jobs:
             ghcr.io/esarath/car-rental-svc:${{ github.sha }}
             ghcr.io/esarath/car-rental-svc:latest
 
-      - name: Commit new tag into the dev overlay
+      # No direct push to main: branch protection on this repo requires a
+      # PR + at least 1 approving review before anything reaches main, and
+      # that applies to this bot too — no auto-approve, no bypass. This job
+      # opens the tag-bump PR; a human still has to approve/merge it, ArgoCD
+      # only syncs dev after that merge lands.
+      - name: Open a PR bumping the dev overlay's image tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           git config user.name "car-rental-ci"
           git config user.email "car-rental-ci@users.noreply.github.com"
+          BRANCH="ci/car-rental-svc-${{ github.sha }}"
+          git checkout -b "$BRANCH"
           sed -i "s|newTag: .*|newTag: ${{ github.sha }}|" apps/car-rental/overlays/dev/kustomization.yaml
           git add apps/car-rental/overlays/dev/kustomization.yaml
-          git diff --cached --quiet || git commit -m "ci: car-rental-svc ${{ github.sha }} -> dev"
-          git push
+          git diff --cached --quiet && { echo "No tag change, nothing to open a PR for."; exit 0; }
+          git commit -m "ci: car-rental-svc ${{ github.sha }} -> dev"
+          git push origin "$BRANCH"
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "ci: car-rental-svc ${{ github.sha }} -> dev" \
+            --body "Automated tag bump from car-rental-ci.yaml. Requires 1 approval before merge (branch protection) — ArgoCD syncs \`car-rental-dev\` only after this merges."
