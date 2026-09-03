@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql
+  labels:
+    app: postgresql
+spec:
+  serviceName: postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+  template:
+    metadata:
+      labels:
+        app: postgresql
+    spec:
+      # No fsGroup/runAsUser pinned — OpenShift's restricted SCC auto-assigns
+      # both from this namespace's allocated UID/GID range at admission time.
+      # PGDATA is a subdirectory of the mount (not the mount root) so initdb
+      # creates it fresh with correct ownership under that assigned UID — see
+      # execution guide Phase 03 note if this still CrashLoopBackOffs.
+      containers:
+        - name: postgresql
+          image: docker.io/library/postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgresql
+          envFrom:
+            - secretRef:
+                name: postgresql-credentials
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init-scripts
+              mountPath: /docker-entrypoint-initdb.d
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "carrental"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "carrental"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+      volumes:
+        - name: init-scripts
+          configMap:
+            name: postgresql-init
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: nfs-storage
+        resources:
+          requests:
+            storage: 2Gi

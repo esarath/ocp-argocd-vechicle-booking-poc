@@ -1,0 +1,34 @@
+name: car-rental-promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Validated SHA tag from the dev overlay to promote to prod"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm the tag was actually validated in dev
+        run: |
+          grep -q "newTag: ${{ inputs.image_tag }}" apps/car-rental/overlays/dev/kustomization.yaml || {
+            echo "::error::${{ inputs.image_tag }} is not the tag currently deployed in dev — promote the validated tag, not an arbitrary one."
+            exit 1
+          }
+
+      - name: Commit the tag into the prod overlay
+        run: |
+          git config user.name "car-rental-promote"
+          git config user.email "car-rental-ci@users.noreply.github.com"
+          sed -i "s|newTag: .*|newTag: ${{ inputs.image_tag }}|" apps/car-rental/overlays/prod/kustomization.yaml
+          git add apps/car-rental/overlays/prod/kustomization.yaml
+          git commit -m "promote: car-rental-svc ${{ inputs.image_tag }} -> prod"
+          git push

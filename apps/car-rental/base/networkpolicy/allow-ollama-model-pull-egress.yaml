@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ollama-model-pull-egress
+spec:
+  # Scoped to the ollama pod only — narrower than an unscoped cluster egress
+  # rule, per the architecture doc's LLD 04 recommendation. Destination CIDR
+  # is still broad (0.0.0.0/0 on 443) because the model registry's exact
+  # egress range isn't known yet; narrow this to an allowlist/proxy CIDR once
+  # it is (see architecture doc risk table).
+  podSelector:
+    matchLabels:
+      app: ollama
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443

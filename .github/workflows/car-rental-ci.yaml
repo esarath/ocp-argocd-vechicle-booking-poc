@@ -1,0 +1,55 @@
+name: car-rental-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/generic-svc/**"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        working-directory: services/generic-svc
+        run: pip install -r requirements.txt
+
+      - name: Smoke-import the app
+        working-directory: services/generic-svc
+        run: python -c "import app"
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: services/generic-svc
+          push: true
+          tags: |
+            ghcr.io/esarath/car-rental-svc:${{ github.sha }}
+            ghcr.io/esarath/car-rental-svc:latest
+
+      - name: Commit new tag into the dev overlay
+        run: |
+          git config user.name "car-rental-ci"
+          git config user.email "car-rental-ci@users.noreply.github.com"
+          sed -i "s|newTag: .*|newTag: ${{ github.sha }}|" apps/car-rental/overlays/dev/kustomization.yaml
+          git add apps/car-rental/overlays/dev/kustomization.yaml
+          git diff --cached --quiet || git commit -m "ci: car-rental-svc ${{ github.sha }} -> dev"
+          git push

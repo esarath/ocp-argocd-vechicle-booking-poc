@@ -1,0 +1,44 @@
+name: validate-car-rental
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  yaml-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ibiqlik/action-yamllint@v3
+        with:
+          config_data: "{extends: default, rules: {line-length: disable, document-start: disable}}"
+
+  kustomize-and-dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl (for kustomize build)
+        uses: azure/setup-kubectl@v4
+
+      - name: Build every kustomization
+        run: |
+          set -e
+          for d in apps/app-of-apps apps/car-rental/overlays/dev apps/car-rental/overlays/prod; do
+            echo "== $d =="
+            kubectl kustomize "$d" > /dev/null
+          done
+
+      - name: Spin up kind for server-side dry-run
+        uses: helm/kind-action@v1
+
+      - name: Server-side dry-run against kind
+        run: |
+          set -e
+          for d in apps/car-rental/overlays/dev apps/car-rental/overlays/prod; do
+            echo "== $d (namespace-agnostic dry-run) =="
+            kubectl create namespace dryrun-target --dry-run=client -o yaml | kubectl apply -f - || true
+            kubectl kustomize "$d" | kubectl apply --dry-run=server -n dryrun-target -f -
+          done

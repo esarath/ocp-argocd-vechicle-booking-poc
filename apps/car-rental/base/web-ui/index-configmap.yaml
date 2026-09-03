@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-ui-content
+  labels:
+    app: web-ui
+data:
+  index.html: |
+    <!doctype html>
+    <html>
+      <head><title>Car Rental Booking — POC</title></head>
+      <body style="font-family: sans-serif; max-width: 640px; margin: 4rem auto;">
+        <h1>Car Rental Booking Platform</h1>
+        <p>POC web UI placeholder. The real frontend is not yet built — this
+        page confirms the Route, Service and Deployment wiring end to end.</p>
+        <p>Try the API through the gateway:
+          <code>/catalog/items</code>, <code>/booking/health</code></p>
+      </body>
+    </html>

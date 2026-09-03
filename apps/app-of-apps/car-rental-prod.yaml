@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: car-rental-prod
+  namespace: openshift-gitops
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: car-rental
+  source:
+    repoURL: "https://github.com/esarath/ocp-argocd-vechicle-booking-poc.git"
+    targetRevision: main
+    path: apps/car-rental/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: car-rental-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

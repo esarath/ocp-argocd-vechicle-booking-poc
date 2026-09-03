@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: chatbot-svc
+  labels:
+    app: chatbot-svc
+spec:
+  selector:
+    app: chatbot-svc
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

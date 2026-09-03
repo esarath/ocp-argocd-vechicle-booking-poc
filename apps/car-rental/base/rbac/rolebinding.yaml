@@ -1,0 +1,16 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: car-rental-team-admin
+subjects:
+  # POC placeholder subject — replace with the real group/user(s) who should
+  # have namespace-scoped admin before this goes beyond a lab environment.
+  - kind: Group
+    apiGroup: rbac.authorization.k8s.io
+    name: car-rental-team
+roleRef:
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+  # Namespace-scoped via RoleBinding, never a ClusterRoleBinding — this only
+  # grants admin within whichever namespace this RoleBinding is applied to.
+  name: admin

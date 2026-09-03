@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-init
+  labels:
+    app: postgresql
+data:
+  01-schemas.sql: |
+    CREATE SCHEMA IF NOT EXISTS catalog;
+    CREATE SCHEMA IF NOT EXISTS location;
+    CREATE SCHEMA IF NOT EXISTS traveler;
+    CREATE SCHEMA IF NOT EXISTS booking;
+    CREATE SCHEMA IF NOT EXISTS payment;
+
+  02-tables.sql: |
+    CREATE TABLE IF NOT EXISTS catalog.cars (
+      id SERIAL PRIMARY KEY,
+      make VARCHAR(50) NOT NULL,
+      model VARCHAR(50) NOT NULL,
+      rate_per_km NUMERIC(6,2) NOT NULL,
+      active BOOLEAN NOT NULL DEFAULT true
+    );
+
+    CREATE TABLE IF NOT EXISTS location.cities (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(50) NOT NULL UNIQUE
+    );
+
+    CREATE TABLE IF NOT EXISTS location.routes (
+      id SERIAL PRIMARY KEY,
+      from_city_id INTEGER NOT NULL REFERENCES location.cities(id),
+      to_city_id INTEGER NOT NULL REFERENCES location.cities(id),
+      distance_km NUMERIC(6,1) NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS traveler.travelers (
+      id SERIAL PRIMARY KEY,
+      booking_id INTEGER,
+      name VARCHAR(100) NOT NULL,
+      age INTEGER NOT NULL,
+      gender VARCHAR(10) NOT NULL CHECK (gender IN ('male', 'female')),
+      is_child BOOLEAN NOT NULL DEFAULT false
+    );
+
+    CREATE TABLE IF NOT EXISTS booking.bookings (
+      id SERIAL PRIMARY KEY,
+      car_id INTEGER NOT NULL,
+      route_id INTEGER NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      fare NUMERIC(10,2),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS payment.payments (
+      id SERIAL PRIMARY KEY,
+      booking_id INTEGER NOT NULL,
+      amount NUMERIC(10,2) NOT NULL,
+      method VARCHAR(20) NOT NULL DEFAULT 'mock',
+      status VARCHAR(20) NOT NULL DEFAULT 'captured',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+  03-seed.sql: |
+    -- LLD note: gender is now (male|female) with a derived is_child flag from
+    -- age, replacing the earlier male/female/child conflation flagged in the
+    -- architecture doc for product sign-off.
+    INSERT INTO catalog.cars (make, model, rate_per_km, active) VALUES
+      ('TATA', 'Harrier', 14.00, true),
+      ('Mahindra', 'XUV700', 15.50, true),
+      ('Honda', 'City', 11.00, true),
+      ('Force', 'Traveller', 18.00, true),
+      ('Maruti', 'Ertiga', 12.50, true)
+    ON CONFLICT DO NOTHING;
+
+    INSERT INTO location.cities (name) VALUES
+      ('Bengaluru'), ('Chennai'), ('Hyderabad'), ('Mumbai'), ('Delhi')
+    ON CONFLICT (name) DO NOTHING;

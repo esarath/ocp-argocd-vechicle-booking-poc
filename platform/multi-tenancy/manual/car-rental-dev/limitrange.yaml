@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: car-rental-dev-limits
+  namespace: car-rental-dev
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 100m
+        memory: 128Mi
+      defaultRequest:
+        cpu: 50m
+        memory: 64Mi

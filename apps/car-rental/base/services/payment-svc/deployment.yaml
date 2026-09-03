@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-svc
+  labels:
+    app: payment-svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-svc
+  template:
+    metadata:
+      labels:
+        app: payment-svc
+    spec:
+      containers:
+        - name: payment-svc
+          image: ghcr.io/esarath/car-rental-svc:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVICE_NAME
+              value: "payment-svc"
+            - name: DB_SCHEMA
+              value: "payment"
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgresql:5432/$(POSTGRES_DB)"
+          envFrom:
+            - secretRef:
+                name: postgresql-credentials
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true

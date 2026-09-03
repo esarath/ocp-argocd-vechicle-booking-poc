@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  labels:
+    app: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      # No fsGroup/runAsUser pinned — let OpenShift's restricted SCC assign
+      # from this namespace's auto-allocated UID range (see execution guide
+      # Phase 03 note on arbitrary-UID compatibility for upstream images).
+      containers:
+        - name: ollama
+          image: docker.io/ollama/ollama:latest
+          ports:
+            - containerPort: 11434
+          env:
+            - name: OLLAMA_MODELS
+              value: /models
+          volumeMounts:
+            - name: models
+              mountPath: /models
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1536Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 11434
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          # ships with an empty model PVC by design — see execution guide
+          # Phase 04, Task 11 for the one-time `ollama pull` step.
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: ollama-models

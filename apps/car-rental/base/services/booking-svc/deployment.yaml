@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-svc
+  labels:
+    app: booking-svc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: booking-svc
+  template:
+    metadata:
+      labels:
+        app: booking-svc
+    spec:
+      containers:
+        - name: booking-svc
+          image: ghcr.io/esarath/car-rental-svc:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SERVICE_NAME
+              value: "booking-svc"
+            - name: DB_SCHEMA
+              value: "booking"
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgresql:5432/$(POSTGRES_DB)"
+            - name: PRICING_URL
+              value: "http://pricing-svc:8080"
+            - name: PAYMENT_URL
+              value: "http://payment-svc:8080"
+            - name: TRAVELER_URL
+              value: "http://traveler-svc:8080"
+          envFrom:
+            - secretRef:
+                name: postgresql-credentials
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true

@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-gateway-conf
+  labels:
+    app: api-gateway
+data:
+  default.conf: |
+    server {
+      listen 8080;
+
+      location /catalog/  { proxy_pass http://catalog-svc:8080/; }
+      location /location/ { proxy_pass http://location-svc:8080/; }
+      location /traveler/ { proxy_pass http://traveler-svc:8080/; }
+      location /pricing/  { proxy_pass http://pricing-svc:8080/; }
+      location /booking/  { proxy_pass http://booking-svc:8080/; }
+      location /payment/  { proxy_pass http://payment-svc:8080/; }
+      location /chatbot/  { proxy_pass http://chatbot-svc:8080/; }
+
+      location /healthz {
+        return 200 'ok';
+        add_header Content-Type text/plain;
+      }
+    }

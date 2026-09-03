@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: car-rental-prod
+  labels:
+    app.kubernetes.io/part-of: car-rental
+    argocd.argoproj.io/managed-by: openshift-gitops
+    tenant-environment: prod
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

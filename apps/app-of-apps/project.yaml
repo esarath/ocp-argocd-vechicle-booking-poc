@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: car-rental
+  namespace: openshift-gitops
+spec:
+  description: Car Rental Booking Platform POC — dedicated tenant project
+  sourceRepos:
+    - "https://github.com/esarath/ocp-argocd-vechicle-booking-poc.git"
+  destinations:
+    - namespace: car-rental-dev
+      server: https://kubernetes.default.svc
+    - namespace: car-rental-prod
+      server: https://kubernetes.default.svc
+    - namespace: openshift-gitops
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: "*"
+    - group: apps
+      kind: "*"
+    - group: autoscaling
+      kind: "*"
+    - group: policy
+      kind: "*"
+    - group: networking.k8s.io
+      kind: "*"
+    - group: route.openshift.io
+      kind: "*"
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding

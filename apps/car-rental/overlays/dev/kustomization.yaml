@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: car-rental-dev
+
+resources:
+  - ../../base
+
+commonLabels:
+  tenant-environment: dev
+
+images:
+  # CI (car-rental-ci.yaml) auto-commits a real SHA tag here on every push to
+  # services/generic-svc/** — see architecture doc LLD 05 and execution guide
+  # Phase 03 Task 8. "latest" is the pre-first-build placeholder.
+  - name: ghcr.io/esarath/car-rental-svc
+    newTag: latest

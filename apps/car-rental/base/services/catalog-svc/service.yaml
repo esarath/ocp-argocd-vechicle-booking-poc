@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: catalog-svc
+  labels:
+    app: catalog-svc
+spec:
+  selector:
+    app: catalog-svc
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

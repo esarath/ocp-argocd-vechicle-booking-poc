@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-svc
+  labels:
+    app: booking-svc
+spec:
+  selector:
+    app: booking-svc
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

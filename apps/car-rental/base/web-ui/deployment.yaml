@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-ui
+  labels:
+    app: web-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: web-ui
+  template:
+    metadata:
+      labels:
+        app: web-ui
+    spec:
+      containers:
+        - name: web-ui
+          image: docker.io/nginxinc/nginx-unprivileged:1.27-alpine
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: content
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+      volumes:
+        - name: content
+          configMap:
+            name: web-ui-content
