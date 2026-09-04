@@ -17,6 +17,18 @@ replicas:
     count: 2
   - name: web-ui
     count: 2
+  # This lab cluster's 2 workers have ~5 vCPU allocatable combined, and
+  # platform/system pods (monitoring, ArgoCD, MetalLB, ...) alone already
+  # consume nearly all of it — dev+prod car-rental requests are a small
+  # fraction of allocated capacity, but there's essentially zero spare room
+  # for anything beyond what's already running. Ollama is the single
+  # largest consumer (250m/1 CPU request/limit) and the execution guide's
+  # own documented rollback for "over quota under real load" is to cut it
+  # first; chatbot-svc/mcp-server degrade to non-AI stubs by design, so
+  # this is a deliberate capacity trade-off for this lab, not a workaround
+  # masking a real problem. Scale back up once more node capacity exists.
+  - name: ollama
+    count: 0
 
 images:
   # Set only by the manual promote workflow (car-rental-promote.yaml) with a
