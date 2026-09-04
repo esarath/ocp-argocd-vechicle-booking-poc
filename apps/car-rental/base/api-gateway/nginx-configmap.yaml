@@ -5,7 +5,18 @@ metadata:
   labels:
     app: api-gateway
 data:
-  default.conf: |
+  # Rendered to conf.d/default.conf by the nginx-unprivileged image's
+  # built-in docker-entrypoint envsubst step (any /etc/nginx/templates/*
+  # .template gets ${VAR}-substituted from the container's env at startup) —
+  # POD_NAMESPACE (downward API) is what makes this file portable across the
+  # dev/prod overlays without hardcoding either namespace here.
+  #
+  # Upstream hostnames must be fully-qualified: nginx's `resolver` directive
+  # does its own DNS queries and does NOT read the pod's /etc/resolv.conf
+  # search list the way glibc does, so a bare "catalog-svc" gets NXDOMAIN
+  # from CoreDNS even though every other resolver in the pod would expand it
+  # via the search suffix.
+  default.conf.template: |
     # Cluster DNS, not a hardcoded upstream — resolves proxy_pass targets at
     # REQUEST time via a variable, not once at config-load time. A plain
     # `proxy_pass http://svc:8080/` resolves the hostname once at nginx
@@ -18,31 +29,31 @@ data:
       listen 8080;
 
       location /catalog/ {
-        set $upstream http://catalog-svc:8080;
+        set $upstream http://catalog-svc.${POD_NAMESPACE}.svc.cluster.local:8080;
         proxy_pass $upstream/;
       }
       location /location/ {
-        set $upstream http://location-svc:8080;
+        set $upstream http://location-svc.${POD_NAMESPACE}.svc.cluster.local:8080;
         proxy_pass $upstream/;
       }
       location /traveler/ {
-        set $upstream http://traveler-svc:8080;
+        set $upstream http://traveler-svc.${POD_NAMESPACE}.svc.cluster.local:8080;
         proxy_pass $upstream/;
       }
       location /pricing/ {
-        set $upstream http://pricing-svc:8080;
+        set $upstream http://pricing-svc.${POD_NAMESPACE}.svc.cluster.local:8080;
         proxy_pass $upstream/;
       }
       location /booking/ {
-        set $upstream http://booking-svc:8080;
+        set $upstream http://booking-svc.${POD_NAMESPACE}.svc.cluster.local:8080;
         proxy_pass $upstream/;
       }
       location /payment/ {
-        set $upstream http://payment-svc:8080;
+        set $upstream http://payment-svc.${POD_NAMESPACE}.svc.cluster.local:8080;
         proxy_pass $upstream/;
       }
       location /chatbot/ {
-        set $upstream http://chatbot-svc:8080;
+        set $upstream http://chatbot-svc.${POD_NAMESPACE}.svc.cluster.local:8080;
         proxy_pass $upstream/;
       }
 
