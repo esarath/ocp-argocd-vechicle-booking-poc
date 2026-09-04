@@ -23,4 +23,4 @@ images:
   # tag already validated in dev — never auto-committed here. "latest" is the
   # pre-first-promote placeholder.
   - name: ghcr.io/esarath/car-rental-svc
-    newTag: latest
+    newTag: db13f268a208c6dc53ffc10885f35b217297d0b2
