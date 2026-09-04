@@ -39,7 +39,12 @@ spec:
               mountPath: /docker-entrypoint-initdb.d
           resources:
             requests:
-              cpu: 100m
+              # 50m, not 100m — observed real usage on this cluster is ~4m
+              # (oc adm top), and this lab's 2 workers have almost no CPU
+              # request headroom once platform/system pods and the rest of
+              # car-rental's own footprint are accounted for. Limit is
+              # unchanged, so it can still burst well past this if needed.
+              cpu: 50m
               memory: 256Mi
             limits:
               cpu: 500m
