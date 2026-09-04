@@ -111,8 +111,22 @@ oc apply -f platform/multi-tenancy/manual/car-rental-dev/limitrange.yaml
 ```
 ✓ **Verify:** `oc describe resourcequota car-rental-dev-quota -n car-rental-dev` shows the hard limits from the LLD table (requests.cpu 1.5, requests.memory 2Gi, pods 20).
 
-### Task 4 — Apply the production quota and limit range `manual`
-Can be applied now (idempotent, no workload exists yet in `car-rental-prod`) so it is not a blocker later at promote time.
+### Task 4 — Apply the production quota and limit range `manual, wait for Phase 05`
+**Do not run this until after Phase 05 (dev validated) passes.** It looks
+idempotent/harmless — no workload exists yet in `car-rental-prod` — but
+`car-rental-dev` and `car-rental-prod` Applications both already carry
+`automated` sync from Phase 00's bootstrap. The moment this quota exists,
+ArgoCD immediately starts a full `car-rental-prod` sync **in parallel**
+with dev's own initial sync, not sequentially as this guide otherwise
+intends. On this lab's 2-worker cluster that produced a real, once-lived
+incident: `requests.cpu` for dev+prod combined exceeded free node capacity,
+`postgresql-0` got stuck `Pending` in *both* namespaces simultaneously, the
+OpenShift GitOps operator's own controller upgrade then couldn't reschedule
+either (cluster-wide ArgoCD outage, not just car-rental), and recovery
+required manually deleting `car-rental-prod`'s namespace to free CPU before
+ArgoCD's own controller could even come back. Apply this only once Phase
+05's smoke test / quota-headroom / isolation checks have all passed for
+real.
 ```bash
 oc apply -f platform/multi-tenancy/manual/car-rental-prod/resourcequota.yaml
 oc apply -f platform/multi-tenancy/manual/car-rental-prod/limitrange.yaml
@@ -121,7 +135,7 @@ oc apply -f platform/multi-tenancy/manual/car-rental-prod/limitrange.yaml
 
 ↺ **Rollback:** Wrong ceiling applied — re-apply the corrected file; `ResourceQuota`/`LimitRange` are declarative, a re-apply replaces `spec.hard`/`limits` in place with no pod disruption.
 
-> **Gate:** Do not proceed to Phase 3 until **both** quotas show in `oc get resourcequota -A | grep car-rental` — the workload sync in Phase 3 will fail admission without them.
+> **Gate:** Do not proceed to Phase 3 until the **dev** quota shows in `oc get resourcequota -n car-rental-dev` — the workload sync in Phase 3 will fail admission without it. The **prod** quota (Task 4) is a separate, later gate — see Task 4 above, it must wait until after Phase 05.
 
 ---
 
@@ -207,6 +221,8 @@ curl -sk https://$ROUTE/booking/health
 ```
 ✓ **Verify:** Both return `200`; catalog item has a non-null `rate_per_km`.
 
+↺ **If this times out or 502/504s:** don't assume it's a business-logic or connectivity problem first — on this cluster it's been DNS both times so far. Check, in order: (1) can any pod in the namespace resolve *anything* (`oc exec` a pod, `nslookup kubernetes.default.svc.cluster.local`) — if not, see the `allow-dns-egress` port-5353 gotcha in the architecture doc's NetworkPolicy section; (2) does `oc logs deploy/api-gateway` show `could not be resolved (3: Host not found)` specifically (a real NXDOMAIN, not a timeout) — if so, see the nginx-resolver FQDN gotcha in the architecture doc's service table.
+
 ### Task 12 — Confirm real usage sits inside quota headroom `manual`
 ```bash
 oc adm top pods -n car-rental-dev
@@ -214,7 +230,7 @@ oc describe resourcequota car-rental-dev-quota -n car-rental-dev
 ```
 ✓ **Verify:** Used well under the ~40% headroom modeled in the LLD (requests.memory used < ~1.4Gi of the 2Gi hard cap). Check CPU here too, not just memory — see architecture doc's CPU headroom risk note.
 
-↺ **Rollback:** Over budget — cut Ollama first (`oc scale deploy/ollama --replicas=0 -n car-rental-dev`); chatbot-svc/mcp-server degrade to non-AI stubs rather than failing, by design.
+↺ **Rollback:** Over budget — cut Ollama first, but **do it in git, not live**: a live `oc scale deploy/ollama --replicas=0 -n car-rental-dev` gets reverted within seconds by ArgoCD's `selfHeal` (confirmed on this cluster). Add `ollama` with `count: 0` to the overlay's `replicas:` list in `kustomization.yaml`, commit, push, merge — see either overlay's current file for the pattern already in use. chatbot-svc/mcp-server degrade to non-AI stubs rather than failing, by design.
 
 ### Task 13 — Confirm NetworkPolicy isolation actually holds `manual`
 Prove default-deny is real, not just declared — try a call that should be blocked.
@@ -287,7 +303,7 @@ oc get pdb -n car-rental-prod
 ```
 ✓ **Verify:** For each of the three services, the two pods' `NODE` column shows `worker-1.lab.ocp.local` and `worker-2.lab.ocp.local` — not both on the same node (confirms `topologySpreadConstraints` actually worked, not just that it was declared). All 3 PDBs show `ALLOWED DISRUPTIONS: 1`.
 
-↺ **If both replicas landed on the same node:** not a failure by itself (`whenUnsatisfiable: ScheduleAnyway` allows it if the other worker was briefly full) — re-check after a few minutes; if it persists, check `oc describe node` on both workers for why one is being avoided.
+↺ **If both replicas landed on the same node:** not a failure by itself (`whenUnsatisfiable: ScheduleAnyway` allows it if the other worker was briefly full) — re-check after a few minutes; if it persists, check `oc describe node` on both workers for why one is being avoided. **Lived, not just theoretical:** on this lab cluster's first real prod promote, one worker sat at ~99% CPU *requests* allocated (not usage — this cluster's platform/system pods alone consume nearly all allocatable CPU before car-rental's own footprint is even counted) for the entire session, so `api-gateway`/`web-ui` both landed on the other worker and stayed there — re-checking later didn't change it, because the constraint wasn't transient. If `oc describe node` shows one worker consistently near 100% `Allocated resources` requests (not `oc adm top`'s usage numbers, which can look nowhere near this tight), that's the real cause — see Task 19 below.
 
 ### Task 19 — Combined footprint check across both namespaces `manual`
 The one risk called out in the LLD: dev + prod together are the tightest against this lab cluster's free CPU, not memory.
@@ -296,6 +312,25 @@ oc adm top pods -n car-rental-dev -n car-rental-prod
 oc describe nodes worker-1.lab.ocp.local worker-2.lab.ocp.local | grep -A3 "Allocated resources"
 ```
 ✓ **Verify:** Combined requests stay comfortably under free worker capacity — for **both** CPU and memory. If not, this is the trigger to move production onto separate/larger nodes rather than run both indefinitely on this lab cluster.
+
+**Lived on this cluster, first real prod promote:** `oc adm top` showed
+combined dev+prod usage at 1-10m CPU per pod — nowhere near tight — while
+`oc describe node`'s `Allocated resources` (scheduling-time *requests*,
+not runtime usage) sat at 96-99% on both workers, because platform/system
+pods (monitoring, ArgoCD, MetalLB, image-registry, router, ...) already
+consume nearly all of this lab's ~5 vCPU allocatable before car-rental's
+own ~1.8 vCPU combined requests are counted. 6 of 15 prod pods stuck
+`Pending` on first sync as a result. **The two numbers tell different
+stories on this cluster — check both, and trust `Allocated resources` for
+"will this pod schedule," not `oc adm top`.** Fixed by: pausing Ollama in
+prod (verify it was actually *Running*, not already `Pending` itself,
+before assuming this frees anything — ours didn't, the first time),
+pausing Ollama in dev too (this one was real, freed 250m), and reducing
+`postgresql`'s CPU *request* 100m→50m in the base StatefulSet (its real
+usage is ~4-10m — the request had generous headroom to spare). Both
+overlays currently run with Ollama at `replicas: 0` as a result — a
+deliberate, standing trade-off on this cluster, not a bug to "fix" by
+re-enabling it without freeing equivalent capacity first.
 
 ---
 
