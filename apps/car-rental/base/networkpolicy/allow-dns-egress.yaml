@@ -1,3 +1,8 @@
+# OVN-Kubernetes evaluates egress NetworkPolicy ACLs *after* load-balancing,
+# so traffic to the dns-default Service (port 53) is checked against its
+# real backend port, 5353 (CoreDNS's actual containerPort on this cluster's
+# DNS operator, not 53) — both ports are needed or DNS resolution silently
+# times out for every pod this policy targets.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -14,3 +19,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
+        - protocol: UDP
+          port: 5353
+        - protocol: TCP
+          port: 5353
