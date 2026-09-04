@@ -9,6 +9,17 @@ resources:
 commonLabels:
   tenant-environment: dev
 
+replicas:
+  # Same CPU-headroom constraint as prod (see that overlay's comment) —
+  # dev+prod combined don't fit this lab's ~5 vCPU allocatable alongside
+  # platform/system pod overhead. Dev's own Phase 05 validation already
+  # confirmed the chatbot/mcp-server AI path works with Ollama running;
+  # pausing it here temporarily frees room for prod's Phase 07 validation
+  # instead. Scale back up (or drop this override) once more capacity
+  # exists, or once dev and prod aren't both needed running at once.
+  - name: ollama
+    count: 0
+
 images:
   # CI (car-rental-ci.yaml) opens a PR bumping this tag on every push to
   # services/generic-svc/** — merge is required (branch protection), it does
