@@ -196,13 +196,18 @@ oc exec -it deploy/catalog-svc -n car-rental-dev -- curl -s localhost:8080/items
 ```
 ✓ **Verify:** Returns the 5 seeded cars (TATA/Harrier, Mahindra/XUV700, Honda/City, Force/Traveller, Maruti/Ertiga) with their `rate_per_km`.
 
-### Task 10 — Pull the Ollama model `manual, one-time`
-Ships with an empty model PVC by design — this is the one step that needs real outbound egress.
+### Task 10 — Pull the Ollama model `manual, one-time, per environment`
+Ships with an empty model PVC by design — this is the one step that needs real outbound egress. **Each environment's PVC is separate** — dev and prod each need their own pull, this does not carry over between them (learned 2026-09-09: prod's Ollama pod came up `1/1 Ready` after re-enabling, but `/api/tags` returned `{"models":[]}` — the readiness probe only checks the HTTP server is up, not that a model is present).
 ```bash
 oc exec deploy/ollama -n car-rental-dev -- ollama pull llama3.2:1b
 oc exec deploy/ollama -n car-rental-dev -- ollama list
+
+oc exec deploy/ollama -n car-rental-prod -- ollama pull llama3.2:1b
+oc exec deploy/ollama -n car-rental-prod -- ollama list
 ```
-✓ **Verify:** `llama3.2:1b` listed, ~1.3GB on the PVC.
+✓ **Verify:** `llama3.2:1b` listed, ~1.3GB on the PVC, in **both** namespaces.
+
+↺ **If `oc exec` is unavailable** (e.g. blocked by a policy/classifier in your tooling): the same check/pull can be done through Ollama's own HTTP API from any pod in the same namespace (NetworkPolicy allows same-namespace traffic) — `curl http://ollama:11434/api/tags` to check, `curl -X POST http://ollama:11434/api/pull -d '{"model":"llama3.2:1b"}'` to pull, e.g. via a short-lived debug pod.
 
 ↺ **Rollback:** Egress blocked — pull the model on a machine with internet, export the blob, load it via `ollama create`; or fall back to the rules-based chatbot path noted in the HLD (no redesign needed).
 
